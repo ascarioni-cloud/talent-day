@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Talent Day</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+body{margin:0;font-family:Inter,system-ui;background:#f5f7ff;color:#111827}
+header{background:#fff;padding:16px;text-align:center;font-weight:800}
+main{padding:16px}
+.card{background:#fff;border-radius:20px;padding:24px;max-width:420px;margin:60px auto;text-align:center;box-shadow:0 12px 24px rgba(0,0,0,.1)}
+.big{font-size:28px;font-weight:900}
+.muted{color:#6b7280}
+</style>
+</head>
+<body>
+<header>Talent Day</header>
+<main id="app"></main>
+
+<script>
+const sb = supabase.createClient(
+  'https://vwbjgbjwydbkpmqnxzmm.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ3YmpnYmp3eWRia3BtcW54em1tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNTE5MjMsImV4cCI6MjA5MzYyNzkyM30.xq8EZaZIxqMNupD6UilSfn4DEKc1fdUuF54SquSmSx8'
+);
+
+const params = new URLSearchParams(location.search);
+const queueId = params.get('q');
+
+async function getQueueState(id){
+  const { data: queue } = await sb.from('queues').select('id,name').eq('id', id).single();
+  const { data: users } = await sb.from('queue_users').select('*').eq('queue_id', id).order('created_at');
+  return { queue, users: users || [] };
+}
+
+async function renderUser(id){
+  const { queue, users } = await getQueueState(id);
+
+  document.getElementById('app').innerHTML = `
+    <div class="card">
+      <h2>📍 ${queue?.name || 'Cola'}</h2>
+      <p class="muted">Personas por delante</p>
+      <div id="ahead" class="big">${users.length}</div>
+      <p class="muted" style="margin-top:18px">Tu posición</p>
+      <div id="position" class="big">${users.length + 1}</div>
+    </div>
+  `;
+
+  setInterval(async ()=>{
+    const { users } = await getQueueState(id);
+    document.getElementById('ahead').textContent = users.length;
+  }, 5000);
+
+  sb.channel('queue-'+id)
+    .on('postgres_changes', {
+      event:'*', schema:'public', table:'queue_users', filter:`queue_id=eq.${id}`
+    }, async ()=>{
+      const { users } = await getQueueState(id);
+      document.getElementById('position').textContent = users.length + 1;
+    })
+    .subscribe();
+}
+
+if(queueId){
+  renderUser(queueId);
+}else{
+  document.getElementById('app').innerHTML = `
+    <div class="card">
+      <h2>Acceso administrador</h2>
+      <p class="muted">Este acceso es solo interno</p>
+    </div>`;
+}
+</script>
+</body>
+</html>
